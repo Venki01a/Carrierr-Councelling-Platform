@@ -1,0 +1,194 @@
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { 
+  Alert, AlertDescription, AlertTitle, AlertDialog, AlertDialogAction 
+} from '@/components/ui/alert';
+import { 
+  Card, CardHeader, CardTitle, CardContent, CardFooter 
+} from '@/components/ui/card';
+import { 
+  LineChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line
+} from 'recharts';
+
+// Components
+import StudentProfile from './StudentProfile';
+import CareerExplorer from './CareerExplorer';
+import DigitalPortfolio from './DigitalPortfolio';
+import VirtualCounseling from './VirtualCounseling';
+import Analytics from './Analytics';
+
+const App = () => {
+  return (
+    <Router>
+      <div className="flex flex-col h-screen">
+        <header className="bg-gray-900 text-white py-4 px-6">
+          <nav className="flex justify-between items-center">
+            <Link to="/" className="text-xl font-bold">
+              Career Counseling Platform
+            </Link>
+            <ul className="flex space-x-4">
+              <li><Link to="/profile">Student Profile</Link></li>
+              <li><Link to="/explore">Career Explorer</Link></li>
+              <li><Link to="/portfolio">Digital Portfolio</Link></li>
+              <li><Link to="/counseling">Virtual Counseling</Link></li>
+              <li><Link to="/analytics">Analytics</Link></li>
+            </ul>
+          </nav>
+        </header>
+
+        <main className="flex-1 p-8">
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/profile" element={<StudentProfile />} />
+            <Route path="/explore" element={<CareerExplorer />} />
+            <Route path="/portfolio" element={<DigitalPortfolio />} />
+            <Route path="/counseling" element={<VirtualCounseling />} />
+            <Route path="/analytics" element={<Analytics />} />
+          </Routes>
+        </main>
+
+        <footer className="bg-gray-900 text-white py-4 px-6 text-center">
+          &copy; 2023 Career Counseling Platform
+        </footer>
+      </div>
+    </Router>
+  );
+};
+
+// Home component
+const Home = () => {
+  return (
+    <div className="grid grid-cols-2 gap-8">
+      <Card>
+        <CardHeader>
+          <CardTitle>Welcome to the Career Counseling Platform</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p>Explore your interests, discover potential careers, and plan your future.</p>
+        </CardContent>
+        <CardFooter>
+          <Link to="/profile" className="btn btn-primary">Get Started</Link>
+        </CardFooter>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Key Features</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul className="space-y-4">
+            <li>Personalized career assessments</li>
+            <li>Intelligent career recommendations</li>
+            <li>Digital portfolio builder</li>
+            <li>Virtual counseling sessions</li>
+            <li>Analytics and progress tracking</li>
+          </ul>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default App;
+
+
+
+
+
+import os
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import relationship
+import vultr
+from redis import Redis
+from celery import Celery
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'postgresql://user:password@db.example.com:5432/career_counseling')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+
+# Celery configuration
+app.config.update(
+    CELERY_BROKER_URL=os.environ.get('CELERY_BROKER_URL', 'redis://redis.example.com:6379/0'),
+    CELERY_RESULT_BACKEND=os.environ.get('CELERY_RESULT_BACKEND', 'redis://redis.example.com:6379/0')
+)
+celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
+celery.conf.update(app.config)
+
+# Vultr client
+vultr_client = vultr.Client(os.environ.get('VULTR_API_KEY'))
+
+# Models
+class Student(db.Model):
+    # Model definition remains the same as before
+
+# API Endpoints
+@app.route('/students', methods=['GET', 'POST'])
+def students():
+    if request.method == 'GET':
+        students = Student.query.all()
+        return jsonify([student.as_dict() for student in students])
+    elif request.method == 'POST':
+        data = request.get_json()
+        student = Student(**data)
+        db.session.add(student)
+        db.session.commit()
+        generate_progress_report.delay(student.id)
+        return jsonify(student.as_dict()), 201
+
+@app.route('/students/<int:student_id>', methods=['GET', 'PUT', 'DELETE'])
+def student_detail(student_id):
+    # Endpoint implementation remains the same as before
+
+# Asynchronous tasks
+@celery.task
+def generate_progress_report(student_id):
+    student = Student.query.get(student_id)
+    # Generate and store the progress report
+    report_path = f"/reports/student_{student_id}.pdf"
+    vultr_client.upload_file(report_path, generate_report(student))
+    student.report_path = report_path
+    db.session.commit()
+
+def generate_report(student):
+    # Logic to generate the progress report
+    return b'Sample PDF content'
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+
+
+from flask import Flask, request, jsonify
+import pickle
+import numpy as np
+
+app = Flask(__name__)
+
+# Load the trained machine learning model
+with open('career_counseling_model.pkl', 'rb') as f:
+    model = pickle.load(f)
+
+# Load the feature scaler
+with open('feature_scaler.pkl', 'rb') as f:
+    scaler = pickle.load(f)
+
+@app.route('/predict_career', methods=['POST'])
+def predict_career():
+    # Get the student profile data from the request
+    student_data = request.get_json()
+
+    # Preprocess the data
+    student_features = list(student_data.values())
+    student_features_scaled = scaler.transform([student_features])
+
+    # Make the prediction using the loaded model
+    predicted_outcome = model.predict(student_features_scaled)[0]
+
+    # Return the predicted career outcome
+    return jsonify({'predicted_career': predicted_outcome})
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
